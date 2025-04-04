@@ -27,6 +27,9 @@ class EmailAuth:
                 pickle.dump(creds, token)
         return build('gmail', 'v1', credentials=creds)
 
-class 
-
+class EmailLabeling:   
+    def get_email_sender(from_header):
+        _, email = parseaddr(from_header)
+        return email
+    
 service = EmailAuth.get_email_service()
