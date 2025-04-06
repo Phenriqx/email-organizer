@@ -57,7 +57,6 @@ class EmailConditions:
         if from_header:
             email = EmailConditions.get_email_sender(from_header)
             domain = email.split('@')[-1] if '@' in email else None
-            
             # Enter the email address of your work, for instance: google.com or microsoft.com, etc.
             return domain == 'work.com' 
         
@@ -76,12 +75,77 @@ class EmailConditions:
             return domain in domains
             
         return False
+    
+class EmailHandler:
+    @staticmethod
+    def ensure_labels(service, label_names):
+        """
+        Ensure all specified labels exist and return a name-to-ID mapping.
 
+        label_dict maps label names (e.g., "Work") to their Gmail API IDs (e.g., "Label_123").
+        """
+        existing_labels = service.users().labels().list(userId='me').execute()['labels']
+        label_dict = {label['name']: label['id'] for label in existing_labels}
+        
+        for name in label_names:
+            if name not in label_names:
+                label_body = {
+                    'name': name,
+                    'labelListVisibility': 'labelShow',
+                    'messageListVisibility': 'show'
+                }
+            created_label= service.users().labels().create(userId='me', body=label_body).execute()
+            label_dict[name] = created_label['id']
+        
+        return label_dict
+
+    @staticmethod
+    def get_all_emails(service):
+        """Generator to yield all messages with their IDs and headers."""
+        page_token = None
+        while True:
+            response = service.users().messages().list(
+                userId = 'me',
+                pageToken = page_token,
+                fields = 'messages(id,payload,(headers)),nextPageToken'
+            ).execute()
+            messages = response.get('messages', [])
+            for message in messages:
+                yield message
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break 
+            
+    @staticmethod
+    def organize_emails(service, rules, label_dict):
+        """Process all emails and apply labels based on rules."""
+        processed_count = 0
+        for msg in EmailHandler.get_all_emails(service):
+            try:
+                labels_to_add = [label for condition, label in rules if condition(msg)]
+                if labels_to_add:
+                    label_ids = [label_dict[label] for label in labels_to_add]
+                    service.users().messages().modify(
+                        userId='me',
+                        id=msg['id'],
+                        body={'addLabelIds': label_ids}
+                    ).execute()
+                    
+                processed_count += 1
+                if processed_count % 100 == 0:
+                    print(f'Processed {processed_count} emails.')
+                    
+            except Exception as e:
+                print(e)
+
+def main():
     
+    rules = [
+        (EmailConditions.condition_work, 'Work'),
+        (EmailConditions.condition_college, 'College'),
+        (EmailConditions.multiple_conditionsm, 'Conditions')
+    ]   
+    service = EmailAuth.get_email_service()
     
-rules = [
-    (EmailConditions.condition_work, 'Work'),
-    (EmailConditions.condition_college, 'College'),
-    (EmailConditions.multiple_conditionsm, 'Conditions')
-]   
-service = EmailAuth.get_email_service()
+if __name__ == '__main__':
+    main()
